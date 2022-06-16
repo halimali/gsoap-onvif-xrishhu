@@ -1,5 +1,5 @@
 CC = g++
-CPPFLAG = -Wall -g -w -fPIC -DWITH_NONAMESPACES -fno-use-cxa-atexit -fexceptions -DWITH_DOM  -DWITH_OPENSSL -DSOAP_DEBUG  
+CPPFLAG = --std=c++14 -Wall -g -w -fPIC -DWITH_NONAMESPACES -fno-use-cxa-atexit -fexceptions -DWITH_DOM  -DWITH_OPENSSL -DSOAP_DEBUG  
 
 BASE_DIR=.
 SOURCE=$(BASE_DIR)
