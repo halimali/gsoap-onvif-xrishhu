@@ -1228,13 +1228,20 @@ extern const char soap_base64o[], soap_base64i[];
 #define soap_isninfd(n) ((n) < 0 && soap_isinf(n))
 #define soap_isninff(n) ((n) < 0 && soap_isinf(n))
 
-#ifdef HAVE_SNPRINTF
-# ifdef WIN32
-#  define soap_snprintf(buf, len, ...) (_snprintf((buf), (len), __VA_ARGS__), (buf)[(len)-1] = '\0')
+/* use safer snprintf if possible or guard sprintf against overrun (assumes no variadic macros) */
+# ifdef HAVE_SNPRINTF
+#  if _MSC_VER >= 1400
+#   define SOAP_SNPRINTF(buf, len, num) void)_snprintf_s((buf), (len), _TRUNCATE
+#   define SOAP_SNPRINTF_SAFE(buf, len) void)_snprintf_s((buf), (len), _TRUNCATE
+#  else
+#   define SOAP_SNPRINTF(buf, len, num) void)snprintf((buf), (len)
+#   define SOAP_SNPRINTF_SAFE(buf, len) void)snprintf((buf), (len)
+#   define soap_snprintf snprintf
+#  endif
 # else
-#  define soap_snprintf snprintf
+#  define SOAP_SNPRINTF(buf, len, num) (len) <= (num)) ? (void)((buf)[0] = '\0') : (void)sprintf((buf)
+#  define SOAP_SNPRINTF_SAFE(buf, len) void)sprintf((buf)
 # endif
-#endif
 
 /* gSOAP status/error codes */
 
@@ -2743,6 +2750,7 @@ SOAP_FMAC1 void SOAP_FMAC2 soap_post_check_mime_attachments(struct soap *soap);
 SOAP_FMAC1 int SOAP_FMAC2 soap_check_mime_attachments(struct soap *soap);
 SOAP_FMAC1 struct soap_multipart* SOAP_FMAC2 soap_get_mime_attachment(struct soap *soap, void *handle);
 SOAP_FMAC1 int SOAP_FMAC2 soap_match_cid(struct soap*, const char*, const char*);
+SOAP_FMAC1 const char* SOAP_FMAC2 soap_rand_uuid(struct soap*, const char*);
 #endif
 
 SOAP_FMAC1 int SOAP_FMAC2 soap_register_plugin_arg(struct soap*, int (*fcreate)(struct soap*, struct soap_plugin*, void*), void*);

@@ -16997,3 +16997,43 @@ soap::~soap()
 #endif
 
 /******************************************************************************/
+
+/* return UUID "<prefix>xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx" in a temporary buffer */
+SOAP_FMAC1
+const char*
+SOAP_FMAC2
+soap_rand_uuid(struct soap *soap, const char *prefix)
+{
+  int r1, r2, r3, r4;
+#ifdef WITH_OPENSSL
+  r1 = soap_random;
+  r2 = soap_random;
+#else
+  size_t i;
+  static int k = 0xFACEB00C;
+  int lo = k % 127773;
+  int hi = k / 127773;
+# if defined(HAVE_GETTIMEOFDAY)
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  r1 = 10000000 * tv.tv_sec + tv.tv_usec;
+# elif defined(UNDER_CE)
+  r1 = (int)Random();
+# elif !defined(WITH_LEAN)
+  r1 = (int)time(NULL);
+# else
+  r1 = k;
+# endif
+  k = 16807 * lo - 2836 * hi;
+  if (k <= 0)
+    k += 0x7FFFFFFF;
+  r2 = k;
+  /* k &= 0x8FFFFFFF; */
+  for (i = 0; i < (sizeof(soap->buf) < 16UL ? sizeof(soap->buf) : 16UL); i++)
+    r2 += soap->buf[i];
+#endif
+  r3 = soap_random;
+  r4 = soap_random;
+  (SOAP_SNPRINTF(soap->tmpbuf, sizeof(soap->tmpbuf), prefix ? strlen(prefix) + 37 : 37), "%s%8.8x-%4.4hx-4%3.3hx-%4.4hx-%4.4hx%8.8x", prefix ? prefix : SOAP_STR_EOS, r1, (short)(r2 >> 16), (short)(((short)r2 >> 4) & 0x0FFF), (short)(((short)(r3 >> 16) & 0x3FFF) | 0x8000), (short)r3, r4);
+  return soap->tmpbuf;
+}
