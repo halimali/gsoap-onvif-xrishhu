@@ -63,74 +63,139 @@ int main(int argc, char* argv[])
 	soap_register_plugin(proxyEvent.soap, soap_wsse);
 
 	soap_register_plugin(proxyEvent.soap, soap_wsa);
-
-
-	if (SOAP_OK != soap_wsse_add_UsernameTokenDigest(proxyEvent.soap, NULL, "admin", DEV_PASSWORD))
+	if (SOAP_OK != soap_wsse_add_UsernameTokenDigest(proxyDevice.soap, NULL, "admin", DEV_PASSWORD))
 	{
 		return -1;
 	}
 
-	if (SOAP_OK != soap_wsse_add_Timestamp(proxyEvent.soap, "Time", 10)) 
+	if (SOAP_OK != soap_wsse_add_Timestamp(proxyDevice.soap, "Time", 10)) 
 	{
 		return -1;
 	}
 
-	_tev__CreatePullPointSubscription request;
-	_tev__CreatePullPointSubscriptionResponse response;
-	auto ret = proxyEvent.CreatePullPointSubscription(&request, &response);
-	if (ret != SOAP_OK)
-	{
-		soap_stream_fault(soap, std::cerr);
-	}
-	else
-	{
-		auto address = response.SubscriptionReference.Address;
-		std::cout << address << std::endl;
-		std::cout << "Subscription metadata: " << response.SubscriptionReference.Metadata << std::endl;
-		std::cout << "Termination time " << response.wsnt__TerminationTime << std::endl;
-		std::cout << "Current time " << response.wsnt__CurrentTime << std::endl;
+    _tds__GetCapabilities *tds__GetCapabilities = soap_new__tds__GetCapabilities(soap, -1);
+	tds__GetCapabilities->Category.push_back(tt__CapabilityCategory__All);
 
-		std::string uuid = std::string(soap_rand_uuid(soap, "urn:uuid:"));
-		struct SOAP_ENV__Header header;
-		header.wsa5__MessageID = (char *)uuid.c_str();
-		header.wsa5__To = response.SubscriptionReference.Address;
-		soap->header = &header;
+	_tds__GetCapabilitiesResponse *tds__GetCapabilitiesResponse = soap_new__tds__GetCapabilitiesResponse(soap, -1);
 
-		_tev__PullMessages tev__PullMessages;
-		tev__PullMessages.Timeout = 600;
-		//tev__PullMessages.Timeout = "PT600S";
-		tev__PullMessages.MessageLimit = 100;
-		_tev__PullMessagesResponse tev__PullMessagesResponse;
+	if (SOAP_OK == proxyDevice.GetCapabilities(tds__GetCapabilities, tds__GetCapabilitiesResponse))
+    {
+        if(tds__GetCapabilitiesResponse->Capabilities->Events != NULL)
+        {
 
-		auto ret = proxyEvent.PullMessages(&tev__PullMessages, &tev__PullMessagesResponse);
-		for (auto msg : tev__PullMessagesResponse.wsnt__NotificationMessage)
-		{
-			std::cout << "\tMessage is :" << msg->Topic->__mixed << std::endl;
-		}
-	}
+            printf("have events capabilities\n");
 
-	proxyEvent.destroy();
+            std::cout << "XAddr: " << tds__GetCapabilitiesResponse->Capabilities->Events->XAddr.c_str() << std::endl;
 
-	soap_destroy(soap); 
-	soap_end(soap); 
+            PullPointSubscriptionBindingProxy EventsProxy(
+                        tds__GetCapabilitiesResponse->Capabilities->Events->XAddr.c_str());
+            EventsProxy.soap_endpoint = tds__GetCapabilitiesResponse->Capabilities->Events->XAddr.c_str();
 
-/*
-	_tds__GetDeviceInformation *tds__GetDeviceInformation = soap_new__tds__GetDeviceInformation(soap, -1);
-	_tds__GetDeviceInformationResponse *tds__GetDeviceInformationResponse = soap_new__tds__GetDeviceInformationResponse(soap, -1);
+            if (SOAP_OK != soap_wsse_add_UsernameTokenDigest(EventsProxy.soap, NULL, "admin", DEV_PASSWORD))
+            {
+                return -1;
+            }
 
-	if (SOAP_OK == proxyDevice.GetDeviceInformation(tds__GetDeviceInformation, tds__GetDeviceInformationResponse))
-	{
-		processEventLog(__FILE__, __LINE__, stdout, "-------------------DeviceInformation-------------------");
-		processEventLog(__FILE__, __LINE__, stdout, "Manufacturer:%sModel:%s\r\nFirmwareVersion:%s\r\nSerialNumber:%s\r\nHardwareId:%s", tds__GetDeviceInformationResponse->Manufacturer.c_str(),
-			tds__GetDeviceInformationResponse->Model.c_str(), tds__GetDeviceInformationResponse->FirmwareVersion.c_str(),
-			tds__GetDeviceInformationResponse->SerialNumber.c_str(), tds__GetDeviceInformationResponse->HardwareId.c_str());
-	}
+            if (SOAP_OK != soap_wsse_add_Timestamp(EventsProxy.soap, "Time", 10)) 
+            {
+                return -1;
+            }
+
+            _tev__GetEventProperties gep;
+            _tev__GetEventPropertiesResponse gepr;
+            if (EventsProxy.GetEventProperties(&gep, &gepr) == SOAP_OK)
+            {
+                printf("Event: TopicNamespaceLocation\n");
+                for (size_t i = 0; i < gepr.TopicNamespaceLocation.size(); i++)
+                {
+                    std::cout << gepr.TopicNamespaceLocation.at(i).c_str() << std::endl;
+                }
+            }
+            else
+            {
+                EventsProxy.soap_stream_fault(std::cerr);
+            }
+     
+            if (SOAP_OK != soap_wsse_add_UsernameTokenDigest(EventsProxy.soap, NULL, "admin", DEV_PASSWORD))
+            {
+                return -1;
+            }
+
+            if (SOAP_OK != soap_wsse_add_Timestamp(EventsProxy.soap, "Time", 10)) 
+            {
+                return -1;
+            }
+
+            _tev__CreatePullPointSubscription cpps;
+            _tev__CreatePullPointSubscriptionResponse cppr;
+            std::string termtime = "PT60S";
+            cpps.InitialTerminationTime = &termtime;
+
+            if (EventsProxy.CreatePullPointSubscription(&cpps, &cppr) == SOAP_OK)
+            {
+                printf("Event: pull point subscription created\n");
+            
+                std::cout << "SubscriptionReference.Address: " << cppr.SubscriptionReference.Address << std::endl;
+
+                std::cout << "SubscriptionReference.__size: " << cppr.SubscriptionReference.__size << std::endl;
+
+                std::string sSubscriptionAddress = cppr.SubscriptionReference.Address;
+                PullPointSubscriptionBindingProxy   PullPointProxy(sSubscriptionAddress.c_str());
+
+                if (SOAP_OK != soap_wsse_add_UsernameTokenDigest(PullPointProxy.soap, NULL, "admin", DEV_PASSWORD))
+                {
+                    return -1;
+                }
+
+                if (SOAP_OK != soap_wsse_add_Timestamp(PullPointProxy.soap, "Time", 10)) 
+                {
+                    return -1;
+                }
+
+                while(1)
+                {
+                    printf("PULLING message\n");
+                    _tev__PullMessages  PullMessages;
+                    //PullMessages.Timeout = "PT10S";
+                    PullMessages.Timeout = 60;
+                    PullMessages.MessageLimit = 100;
+                    _tev__PullMessagesResponse PullMessagesResponse;
+
+                    int nRetCode = SOAP_OK;
+                    if ((nRetCode = PullPointProxy.PullMessages(&PullMessages, &PullMessagesResponse)) == SOAP_OK)
+                    {
+                        for (auto msg : PullMessagesResponse.wsnt__NotificationMessage)
+                        {
+                            std::cout << "msg:" << msg->Message.__any << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        PullPointProxy.soap_stream_fault(std::cerr);
+                    }
+
+                    sleep(5);
+                }
+            }                             
+            else
+            {
+                EventsProxy.soap_stream_fault(std::cerr);
+            }
+        }
+        else
+        {
+            printf("events capabilities null!\n");
+        }
+
+    }
 	else
 	{
 		PrintErr(proxyDevice.soap);
 	}
-*/
-	
+
+	soap_destroy(soap); 
+	soap_end(soap); 
+
 	return 0;
 }
 
