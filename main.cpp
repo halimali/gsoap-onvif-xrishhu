@@ -152,9 +152,33 @@ int main(int argc, char* argv[])
                     return -1;
                 }
 
+               soap_register_plugin(PullPointProxy.soap, soap_wsa);
+
                 while(1)
                 {
                     printf("PULLING message\n");
+
+                    if (SOAP_OK != soap_wsse_add_UsernameTokenDigest(PullPointProxy.soap, NULL, "admin", DEV_PASSWORD))
+                    {
+                        return -1;
+                    }
+
+                    if (SOAP_OK != soap_wsse_add_Timestamp(PullPointProxy.soap, "Time", 10)) 
+                    {
+                        return -1;
+                    }
+
+                   if (SOAP_OK != soap_wsa_request(PullPointProxy.soap,
+                                                    NULL,
+                                                    sSubscriptionAddress.c_str(),
+                                                    "http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesRequest") ||
+                       (SOAP_OK != soap_wsa_add_ReplyTo(PullPointProxy.soap,
+                                                        "http://www.w3.org/2005/08/addressing/anonymous"))
+                       )
+                    {
+                        PullPointProxy.soap_stream_fault(std::cerr);                   
+                    }
+
                     _tev__PullMessages  PullMessages;
                     //PullMessages.Timeout = "PT10S";
                     PullMessages.Timeout = 60;
